@@ -1,0 +1,23 @@
+{
+  "dataset_name": "qmof",
+  "authors": [
+    "QMOF Database Contributors"
+  ],
+  "references": [
+    "https://github.com/arosen93/QMOF"
+  ],
+  "data_types": [
+    "dft_3d"
+  ],
+  "target_property": "band_gap",
+  "n_total": 20374,
+  "n_train": 16299,
+  "n_val": 2037,
+  "n_test": 2038,
+  "property_unit": "eV",
+  "property_description": "Electronic band gap calculated using DFT-PBE",
+  "data_available": [
+    "band_gap"
+  ],
+  "structure_format": "cif"
+}
