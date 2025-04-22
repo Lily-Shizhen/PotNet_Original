@@ -46,7 +46,7 @@ import random
 
 plt.switch_backend("agg")
 
-device = torch.device("cuda")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def prepare_batch(
@@ -114,19 +114,28 @@ def train_pyg(
         testing: bool = False,
         train_val_test_loaders=None,
 ):
+    print("=" * 80)
+    print("TRAINING: Initializing training process")
+    print("=" * 80)
+
+    config_start = time.time()
+    print(" Processing configuration...")
     print(config)
     config = TrainingConfig(**config)
     if not os.path.exists(config.output_dir):
         os.makedirs(config.output_dir)
+        print(f"PREPROCESSING: Created output directory: {config.output_dir}")
+
     checkpoint_dir = os.path.join(config.output_dir, config.checkpoint_dir)
     deterministic = False
-    print("config:")
+    print("Writing configuration to file")
     tmp = config.dict()
     f = open(os.path.join(config.output_dir, "config.json"), "w")
     f.write(json.dumps(tmp, indent=4))
     f.close()
-    pprint.pprint(tmp)  # , sort_dicts=False)
 
+    pprint.pprint(tmp)  # , sort_dicts=False)
+    print(f"Configuration setup completed in {time.time() - config_start:.2f}s")
     if config.random_seed is not None:
         deterministic = True
         ignite.utils.manual_seed(config.random_seed)
@@ -138,8 +147,11 @@ def train_pyg(
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
+    # Process dataset info if data_root is provided
     if data_root:
+        print("PREPROCESSING: Loading dataset information...")
         dataset_info = loadjson(os.path.join(data_root, "dataset_info.json"))
+        # Update config with dataset info
         if "n_train" in dataset_info:
             config.n_train = dataset_info['n_train']
         if "n_val" in dataset_info:
@@ -157,47 +169,98 @@ def train_pyg(
         config.keep_data_order = True
         config.target = "target"
 
+        # Load structures from id_prop.csv
+        id_prop_start = time.time()
         id_prop_dat = os.path.join(data_root, "id_prop.csv")
         with open(id_prop_dat, "r") as f:
             reader = csv.reader(f)
             next(reader)  # Skip the header row
             data = [row for row in reader]
+        print(f"PREPROCESSING: Loaded {len(data)} structures from id_prop.csv in {time.time() - id_prop_start:.2f}s")
 
-        dataset_array = []
-        for i in data:
-            info = {}
-            file_name = i[0]
-            file_path = os.path.join(data_root, "structures",file_name +".cif")
-            if file_format == "poscar":
-                atoms = Atoms.from_poscar(file_path)
-            elif file_format == "cif":
-                atoms = Atoms.from_cif(file_path)
-            elif file_format == "xyz":
-                # Note using 500 angstrom as box size
-                atoms = Atoms.from_xyz(file_path, box_size=500)
-            elif file_format == "pdb":
-                # Note using 500 angstrom as box size
-                # Recommended install pytraj
-                # conda install -c ambermd pytraj
-                atoms = Atoms.from_pdb(file_path, max_lat=500)
-            else:
-                raise NotImplementedError(
-                    "File format not implemented", file_format
-                )
+        # Process structures
+        # Check for existing dataset_array
+        dataset_array_path = os.path.join(config.output_dir, 'dataset_array.pkl')
+        print(f"PREPROCESSING: Checking for existing dataset_array at {dataset_array_path}")
+        if os.path.exists(dataset_array_path) and data_root is not None:
+            print(f"PREPROCESSING: Loading dataset_array, attempting to load...")
+            import pickle
+            try:
+                with open(dataset_array_path, 'rb') as f:
+                    dataset_array = pickle.load(f)
+                print(f"PREPROCESSING: Successfully Loaded dataset_array with {len(dataset_array)} structures")
+                # Skip the dataset_array creation part
+            except Exception as e:
+                print(f"ERROR: Failed to load dataset_array: {str(e)}")
+                print("PREPROCESSING: Will create dataset_array from scratch")
+                dataset_array = None
+        else:
+            dataset_array = None
 
-            info["atoms"] = atoms.to_dict()
-            info["jid"] = file_name
+        if dataset_array is None:
+            print("=" * 50)
+            print(f"PREPROCESSING: CREATING NEW DATASET_ARRAY FROM {len(data)} STRUCTURES")
+            print("=" * 50)
+            structure_start = time.time()
+            dataset_array = []
+            for idx,i in enumerate(data):
+                if idx % 1000 == 0 or idx == len(data)-1:
+                    print(f"PREPROCESSING: Creating dataset_array - processing structure {idx+1}/{len(data)} ({(idx+1)/len(data)*100:.1f}%)")
 
-            tmp = [float(j) for j in i[1:-1]]  # float(i[1])
-            if len(tmp) == 1:
-                tmp = tmp[0]
+                info = {}
+                file_name = i[0]
+                file_path = os.path.join(data_root, "structures",file_name +".cif")
 
-            info["target"] = tmp  # float(i[1])
-            dataset_array.append(info)
+                if file_format == "poscar":
+                    atoms = Atoms.from_poscar(file_path)
+                elif file_format == "cif":
+                    atoms = Atoms.from_cif(file_path)
+                elif file_format == "xyz":
+                    # Note using 500 angstrom as box size
+                    atoms = Atoms.from_xyz(file_path, box_size=500)
+                elif file_format == "pdb":
+                    # Note using 500 angstrom as box size
+                    # Recommended install pytraj
+                    # conda install -c ambermd pytraj
+                    atoms = Atoms.from_pdb(file_path, max_lat=500)
+                else:
+                    raise NotImplementedError(
+                        "File format not implemented", file_format
+                    )
+
+                info["atoms"] = atoms.to_dict()
+                info["jid"] = file_name
+
+                tmp = [float(j) for j in i[1:-1]]  # float(i[1])
+                if len(tmp) == 1:
+                    tmp = tmp[0]
+
+                info["target"] = tmp  # float(i[1])
+                dataset_array.append(info)
+
+            print("=" * 50)
+            print(
+                f"PREPROCESSING: Dataset_array creation completed with {len(dataset_array)} structures in {time.time() - structure_start:.2f}s")
+            print("=" * 50)
+
+            # Save the newly created dataset_array
+            dataset_array_path = os.path.join(config.output_dir, 'dataset_array.pkl')
+            print(f"PREPROCESSING: Saving dataset_array to {dataset_array_path}")
+            import pickle
+            try:
+                with open(dataset_array_path, 'wb') as f:
+                    pickle.dump(dataset_array, f)
+                print(f"PREPROCESSING: dataset_array saved with {len(dataset_array)} structures")
+            except Exception as e:
+                print(f"ERROR: Failed to save dataset_array: {str(e)}")
+            # ============================================================
+
+        print("PREPROCESSING: Finished loading dataset_array with", len(dataset_array) if dataset_array else 0,
+              "structures")# Process dataset info if data_root is provided
     else:
         dataset_array = None
+        print('output_dir train', config.output_dir)
 
-    print('output_dir train', config.output_dir)
     if not train_val_test_loaders:
         # use input standardization for all real-valued feature sets
         (
@@ -357,6 +420,7 @@ def train_pyg(
         evaluator.run(val_loader)
 
         tmetrics = train_evaluator.state.metrics
+        #vmetrics = tmetrics
         vmetrics = evaluator.state.metrics
         for metric in metrics.keys():
             tm = tmetrics[metric]
@@ -479,4 +543,3 @@ def train_prop_model(config: Dict, data_root: str = None, checkpoint: str = None
 
     result = train_pyg(config, data_root=data_root, file_format=file_format, checkpoint=checkpoint, testing=testing)
     return result
-
