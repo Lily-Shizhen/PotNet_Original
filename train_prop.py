@@ -541,5 +541,6 @@ def train_prop_model(config: Dict, data_root: str = None, checkpoint: str = None
             config["n_val"] = 5000
             config["n_test"] = 4239
 
-    result = train_pyg(config, data_root=data_root, file_format=file_format, checkpoint=checkpoint, testing=testing)
+    #result = train_pyg(config, data_root=data_root, file_format=file_format, checkpoint=checkpoint, testing=testing)
+    result = train_pyg(config, data_root=data_root or config["output_dir"], file_format=file_format, checkpoint=checkpoint, testing=testing)
     return result

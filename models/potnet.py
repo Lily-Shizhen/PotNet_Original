@@ -122,17 +122,26 @@ class PotNet(nn.Module):
 
     def forward(self, data, print_data=False):
         """CGCNN function mapping graph to outputs."""
+        # Debug what we're getting
+        print(f"Type of data: {type(data)}")
+        print(f"data.batch: {data.batch if hasattr(data, 'batch') else 'N/A'}")
+        print(f"data.edge_index shape: {data.edge_index.shape}")
+        print(f"data.edge_index content: {data.edge_index}")
+        print(f"data.edge_index type: {type(data.edge_index)}")
         # fixed edge features: RBF-expanded bondlengths
         edge_index = data.edge_index
         if self.config.euclidean:
             edge_features = self.edge_embedding(data.edge_attr)
         else:
             edge_features = self.edge_embedding(-0.75 / data.edge_attr)
-        
+
         if not self.config.euclidean:
             inf_edge_index = data.inf_edge_index
             inf_feat = sum([data.inf_edge_attr[:, i] * pot for i, pot in enumerate(self.config.potentials)])
             inf_edge_features = self.inf_edge_embedding(inf_feat)
+            # Ensure inf_edge_features has a batch dimension for BatchNorm1d
+            if inf_edge_features.dim() == 1:
+                inf_edge_features = inf_edge_features.unsqueeze(0)
             inf_edge_features = self.infinite_bn(F.softplus(self.infinite_linear(inf_edge_features)))
 
         # initial node features: atom feature network...

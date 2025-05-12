@@ -9,8 +9,8 @@ from pydantic import root_validator
 from pydantic.typing import Literal
 
 # from typing import List
-from models.base import BaseSettings
-from models.potnet import PotNetConfig
+from base import BaseSettings
+from potnet import PotNetConfig
 
 try:
     VERSION = (
@@ -58,7 +58,6 @@ class TrainingConfig(BaseSettings):
     atom_features: Literal["basic", "atomic_number", "cfid", "cgcnn"] = "cgcnn"
     id_tag: Literal["jid", "id"] = "jid"
 
-    # logging configuration
 
     # training configuration
     random_seed: Optional[int] = 123
