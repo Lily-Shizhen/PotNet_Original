@@ -6,7 +6,7 @@ from torch_geometric.loader import DataLoader
 from torch.utils.data import ConcatDataset
 from pathlib import Path
 import yaml
-config = yaml.safe_load(open("foundation_potnet.yaml", "r"))
+config = yaml.safe_load(open("foundation.yaml", "r"))
 
 # 1. Custom Dataset for processed QMOF graphs
 class QMOFProcessedDataset(InMemoryDataset):
@@ -58,17 +58,16 @@ class MaskNodes:
         data.x[mask_idx] = 0
         return data
 
-def main():
+def main(config):
     # -- Load configuration from potnet.yaml --
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    processed_dir = config.get("process_dir", "results/cache/processed")
+    processed_dir = config.get("process_dir", "results/processed")
     pretrain_cfg = config.get("pretrain", {})
     split        = pretrain_cfg.get("split", None)
     mask_ratio   = pretrain_cfg.get("mask_ratio", 0.2)
     batch_size   = pretrain_cfg.get("batch_size", 256)
     num_epochs   = pretrain_cfg.get("epochs", 100)
-    lr           = pretrain_cfg.get("learning_rate", 1e-4)
-
+    lr           = float(pretrain_cfg.get("learning_rate", 1e-4))  # Convert to float
     # 3. Dataset and DataLoader
     if split is None:
         # concatenate train/val/test splits for self-supervised pre-training
@@ -83,7 +82,7 @@ def main():
     # 4. Model components
     # Adjust the import below to match your local PotNet implementation
     from models.potnet import PotNet
-    encoder = PotNet().to(device)
+    encoder = PotNet(config=config.get('model', {})).to(device)
     # The PotNet encoder outputs 128-dimensional embeddings by design
     emb_dim = 128
 
@@ -129,4 +128,4 @@ def main():
         print(f"Epoch {epoch:03d} | Loss: {avg_loss:.4f}")
 
 if __name__ == '__main__':
-    main()
+    main(config)

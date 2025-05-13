@@ -67,8 +67,11 @@ class PotNet(nn.Module):
 
     def __init__(self, config: PotNetConfig = PotNetConfig(name="potnet")):
         super().__init__()
-        self.config = config
-        if not config.charge_map:
+        if isinstance(config, dict):
+            config = PotNetConfig(**config)
+        self.config = config  # Assign the config to self.config
+        
+        if not self.config.charge_map:
             self.atom_embedding = nn.Linear(
                 config.atom_input_features, config.fc_features
             )
@@ -138,6 +141,7 @@ class PotNet(nn.Module):
         if not self.config.euclidean:
             inf_edge_index = data.inf_edge_index
             inf_feat = sum([data.inf_edge_attr[:, i] * pot for i, pot in enumerate(self.config.potentials)])
+            print(f"inf_feat: {inf_feat}")
             inf_edge_features = self.inf_edge_embedding(inf_feat)
             # Ensure inf_edge_features has a batch dimension for BatchNorm1d
             if inf_edge_features.dim() == 1:

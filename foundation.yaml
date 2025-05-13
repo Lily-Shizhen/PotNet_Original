@@ -19,8 +19,8 @@ pretrain:
   learning_rate: 1e-4
 
 
-epochs: 500
-batch_size: 64
+epochs: 100
+batch_size: 2
 num_workers: 8
 weight_decay: 0.0
 learning_rate: 1e-3

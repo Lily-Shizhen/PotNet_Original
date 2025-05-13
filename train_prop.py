@@ -43,6 +43,9 @@ from ignite.engine import (
 from models.potnet import PotNet
 
 import random
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+
 
 plt.switch_backend("agg")
 
@@ -348,7 +351,13 @@ def train_pyg(
     criterion = criteria[config.criterion]
 
     # set up training engine and evaluators
-    metrics = {"loss": Loss(criterion), "mae": MeanAbsoluteError() * std, "neg_mae": -1.0 * MeanAbsoluteError() * std}
+    # metrics = {"loss": Loss(criterion), "mae": MeanAbsoluteError() * std, "neg_mae": -1.0 * MeanAbsoluteError() * std}
+
+    metrics = {
+        "loss": Loss(criterion, device=torch.device("cpu")),
+        "mae": MeanAbsoluteError(device=torch.device("cpu")) * std,
+        "neg_mae": -1.0 * MeanAbsoluteError(device=torch.device("cpu")) * std,
+    }
 
     trainer = create_supervised_trainer(
         net,
@@ -375,6 +384,18 @@ def train_pyg(
 
     # ignite event handlers:
     trainer.add_event_handler(Events.EPOCH_COMPLETED, TerminateOnNan())
+
+    def show_cuda(engine):
+        # 只在每 100 个 mini‑batch 打印一次
+        if engine.state.iteration % 5 == 0:
+            gb = 1024 ** 3
+            alloc = torch.cuda.memory_allocated() / gb  # 真正占用
+            reserved = torch.cuda.memory_reserved() / gb  # 缓存池
+            print(f"[iter {engine.state.iteration:>6}] "
+                  f"allocated: {alloc:.2f} GB | reserved: {reserved:.2f} GB")
+
+    # 把 handler 挂到事件上
+    trainer.add_event_handler(Events.ITERATION_COMPLETED, show_cuda)
 
     # apply learning rate scheduler
     trainer.add_event_handler(

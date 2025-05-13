@@ -13,7 +13,7 @@ target: target
 atom_features: cgcnn
 
 epochs: 500
-batch_size: 64
+batch_size: 1
 num_workers: 8
 weight_decay: 0.0
 learning_rate: 1e-3
@@ -25,7 +25,7 @@ scheduler: onecycle
 pin_memory: False
 write_checkpoint: True
 write_predictions: True
-store_outputs: True
+store_outputs: False
 progress: True
 log_tensorboard: False
 
