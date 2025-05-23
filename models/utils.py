@@ -43,6 +43,9 @@ class RBFExpansion(nn.Module):
 
     def forward(self, distance: torch.Tensor) -> torch.Tensor:
         """Apply RBF expansion to interatomic distance tensor."""
+        # Ensure distance is a tensor for safe calling of unsqueeze
+        if not isinstance(distance, torch.Tensor):
+            distance = torch.tensor(distance, dtype=torch.float, device=self.centers.device)
         base = self.gamma * (distance.unsqueeze(-1) - self.centers)
         if self.type == 'gaussian':
             return (-base ** 2).exp()

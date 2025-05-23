@@ -65,10 +65,13 @@ class PotNetConv(MessagePassing):
 
 class PotNet(nn.Module):
 
-    def __init__(self, config: PotNetConfig = PotNetConfig(name="potnet")):
+    def __init__(self, config: PotNetConfig = PotNetConfig(name="potnet"),return_node_features=False):
         super().__init__()
+        if isinstance(config, dict):
+            config = PotNetConfig(**config)
         self.config = config
-        if not config.charge_map:
+        self.return_node_features = return_node_features
+        if not config.charge_map:     # charge_map: False
             self.atom_embedding = nn.Linear(
                 config.atom_input_features, config.fc_features
             )
@@ -87,7 +90,7 @@ class PotNet(nn.Module):
             nn.SiLU(),
         )
 
-        if not self.config.euclidean:
+        if not self.config.euclidean:          # euclidean: False
             self.inf_edge_embedding = RBFExpansion(
                 vmin=config.rbf_min,
                 vmax=config.rbf_max,
@@ -106,7 +109,7 @@ class PotNet(nn.Module):
             ]
         )
 
-        if not config.euclidean and config.transformer:
+        if not config.euclidean and config.transformer:         # transformer: False 跳过这里
             self.transformer_conv_layers = nn.ModuleList(
                 [
                     TransformerConv(config.fc_features, config.fc_features)
@@ -122,26 +125,35 @@ class PotNet(nn.Module):
 
     def forward(self, data, print_data=False):
         """CGCNN function mapping graph to outputs."""
+        # Debug what we're getting
+        #print(f"Type of data: {type(data)}")
+        #print(f"data.batch: {data.batch if hasattr(data, 'batch') else 'N/A'}")
+        #print(f"data.edge_index shape: {data.edge_index.shape}")
+        #print(f"data.edge_index content: {data.edge_index}")
+        #print(f"data.edge_index type: {type(data.edge_index)}")
         # fixed edge features: RBF-expanded bondlengths
         edge_index = data.edge_index
-        if self.config.euclidean:
+        if self.config.euclidean:     # euclidean: False
             edge_features = self.edge_embedding(data.edge_attr)
         else:
-            edge_features = self.edge_embedding(-0.75 / data.edge_attr)
-        
-        if not self.config.euclidean:
-            inf_edge_index = data.inf_edge_index
+            edge_features = self.edge_embedding(-0.75 / data.edge_attr)    # ✔
+
+        if not self.config.euclidean:     # euclidean: False
+            inf_edge_index = data.inf_edge_index                # ✔
             inf_feat = sum([data.inf_edge_attr[:, i] * pot for i, pot in enumerate(self.config.potentials)])
             inf_edge_features = self.inf_edge_embedding(inf_feat)
+            # Ensure inf_edge_features has a batch dimension for BatchNorm1d
+            if inf_edge_features.dim() == 1:
+                inf_edge_features = inf_edge_features.unsqueeze(0)
             inf_edge_features = self.infinite_bn(F.softplus(self.infinite_linear(inf_edge_features)))
 
         # initial node features: atom feature network...
-        if self.config.charge_map:
+        if self.config.charge_map:           # charge_map: False 跳过
             node_features = self.atom_embedding(torch.cat([data.x, data.g_feats], -1))
         else:
-            node_features = self.atom_embedding(data.x)
+            node_features = self.atom_embedding(data.x)      # ✔
 
-        if not self.config.euclidean and not self.config.transformer:
+        if not self.config.euclidean and not self.config.transformer:         # ✔
             edge_index = torch.cat([data.edge_index, inf_edge_index], 1)
             edge_features = torch.cat([edge_features, inf_edge_features], 0)
 
@@ -151,8 +163,10 @@ class PotNet(nn.Module):
                 inf_node_features = self.transformer_conv_layers[i](node_features, inf_edge_index, inf_edge_features)
                 node_features = local_node_features + inf_node_features
             else:
-                node_features = self.conv_layers[i](node_features, edge_index, edge_features)
-
-        features = global_mean_pool(node_features, data.batch)
-        features = self.fc(features)
-        return torch.squeeze(self.fc_out(features))
+                node_features = self.conv_layers[i](node_features, edge_index, edge_features)     # ✔
+        if self.return_node_features:
+            return node_features  # Return node-level features directly
+        else:
+            features = global_mean_pool(node_features, data.batch)     # ✔
+            features = self.fc(features)
+            return torch.squeeze(self.fc_out(features))
